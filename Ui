@@ -1,5 +1,5 @@
-if getgenv().Zolar and getgenv().Zolar.Unload then
-    getgenv().Zolar:Unload()
+if getgenv().Aevyx and getgenv().Aevyx.Unload then
+    getgenv().Aevyx:Unload()
 end
 
 local Library = { } do
@@ -26,10 +26,10 @@ local Library = { } do
         return cloneref(game:GetService("CoreGui"))
     end
 
-    Library.Directory = "Zolar"
-    Library.ConfigFolder = "Zolar/Configs"
-    Library.AssetsFolder = "Zolar/Assets"
-    Library.AutoloadFile = "Zolar/autoload.json"
+    Library.Directory = "Aevyx"
+    Library.ConfigFolder = "Aevyx/Configs"
+    Library.AssetsFolder = "Aevyx/Assets"
+    Library.AutoloadFile = "Aevyx/autoload.json"
 
     if isfolder then
         for _, Folder in { Library.Directory, Library.ConfigFolder, Library.AssetsFolder } do
@@ -197,7 +197,7 @@ local Library = { } do
     end
 
     Library.__index = Library
-    Library.Version = "1.1"
+    Library.Version = "1.2"
     Library.WindowWidth = 716
     Library.WindowHeight = 540
 
@@ -878,7 +878,7 @@ local Library = { } do
             if Root then Root.Instance:Destroy() end
         end
 
-        getgenv().Zolar = nil
+        getgenv().Aevyx = nil
     end
 
     Library.Holder = Library:Create("ScreenGui", {
@@ -1113,6 +1113,7 @@ local Library = { } do
             BackgroundColor3 = Color3.new(0, 0, 0),
             BackgroundTransparency = 1,
             Visible = false,
+            Active = true,
             Position = UDim2.fromOffset(0, 0),
             Size = UDim2.new(1, 0, 1, 0),
             ZIndex = Index == 3 and 28 or 15,
@@ -1251,6 +1252,34 @@ local Library = { } do
         and Position.Y <= Corner.Y + Size.Y
     end
 
+    local function IsEffectivelyVisible(Object)
+        local Current = Object
+
+        while Current and Current ~= game do
+            if Current:IsA("GuiObject") and not Current.Visible then
+                return false
+            end
+
+            if Current:IsA("ScreenGui") and not Current.Enabled then
+                return false
+            end
+
+            Current = Current.Parent
+        end
+
+        return Current == game
+    end
+
+    local function AnyWindowOpen()
+        for _, Window in Library.Windows do
+            if Window.IsOpen then
+                return true
+            end
+        end
+
+        return false
+    end
+
     do
         local TouchStart
 
@@ -1264,6 +1293,7 @@ local Library = { } do
             if not IsMobile then return end
             if Input.UserInputType ~= Enum.UserInputType.Touch then return end
             if not TouchStart then return end
+            if Library.Binding then return end
 
             local Delta = Input.Position - TouchStart
             if math.abs(Delta.X) > 12 or math.abs(Delta.Y) > 12 then return end
@@ -1272,19 +1302,27 @@ local Library = { } do
             local ShieldLevel = 0
 
             for Panel, Level in Library.TouchShields do
-                local Live = Panel:IsDescendantOf(Library.Holder.Instance)
-                or Panel:IsDescendantOf(Library.PopupHolder.Instance)
+                if not IsEffectivelyVisible(Panel) then continue end
+                if not PointInside(Position, Panel) then continue end
 
-                if Live and PointInside(Position, Panel) then
-                    ShieldLevel = math.max(ShieldLevel, Level)
-                end
+                ShieldLevel = math.max(ShieldLevel, Level)
             end
 
+            local WindowOpen = AnyWindowOpen()
             local Best
 
             for _, Data in Library.TouchButtons do
                 local Object = Data.Instance
-                if not Object or not Object.Visible then continue end
+                if not Object or not Object.Parent then continue end
+                if not IsEffectivelyVisible(Object) then continue end
+
+                if not WindowOpen then
+                    local IsToggle = Library.MobileHolder
+                    and Object:IsDescendantOf(Library.MobileHolder.Instance)
+
+                    if not IsToggle then continue end
+                end
+
                 if not PointInside(Position, Object) then continue end
                 if Object.ZIndex < ShieldLevel then continue end
 
@@ -2344,7 +2382,7 @@ local Library = { } do
         local MaxSubW = W - 120
 
         local Window = {
-            Name = Params.Name or "ZOLAR",
+            Name = Params.Name or "AEVYX",
             Icon = Params.Icon or "layers",
             IsOpen = true,
             Tabs = { },
@@ -3009,19 +3047,19 @@ local Library = { } do
                 Parent = Library.MobileHolder.Instance,
                 Name = "\0",
                 AnchorPoint = Vector2.new(0.5, 0),
-                Position = UDim2.new(0.5, 0, 0, 8),
-                Size = UDim2.fromOffset(108, 38),
+                Position = UDim2.new(0.5, 0, 0, 4),
+                Size = UDim2.fromOffset(58, 22),
                 BackgroundColor3 = Color3.fromRGB(8, 8, 10),
                 BorderSizePixel = 0,
                 AutoButtonColor = false,
                 FontFace = UiFontBold,
                 Text = "CLOSE",
                 TextColor3 = Color3.fromRGB(255, 255, 255),
-                TextSize = 14,
+                TextSize = 11,
                 ZIndex = 100
             })
 
-            Corner(Toggle.Instance, 12)
+            Corner(Toggle.Instance, 7)
 
             Library:Create("UIStroke", {
                 Parent = Toggle.Instance,
@@ -3225,7 +3263,7 @@ local Library = { } do
 
         local Tab = {
             Name = Params.Name or "Tab",
-            Icon = Params.Icon or "circle",
+            Icon = Params.Icon,
             Window = Window,
             Subs = { },
             Current = nil,
@@ -3270,14 +3308,37 @@ local Library = { } do
             SetRest(Items.BarShadow, "Transparency", 1)
         end
 
-        Items.Icon = MakeImage({
-            Parent = Items.Row.Instance,
-            Icon = Tab.Icon,
-            Pos = UDim2.fromOffset(10, 10),
-            Size = UDim2.fromOffset(20, 20),
-            Color = "DimIcon",
-            Z = 4
-        })
+        local ResolvedIcon = Tab.Icon ~= nil and ResolveIcon(Tab.Icon) or nil
+        local HasIcon = ResolvedIcon ~= nil and ResolvedIcon ~= "rbxassetid://0"
+
+        if HasIcon then
+            Items.Icon = MakeImage({
+                Parent = Items.Row.Instance,
+                Icon = Tab.Icon,
+                Pos = UDim2.fromOffset(10, 10),
+                Size = UDim2.fromOffset(20, 20),
+                Color = "DimIcon",
+                Z = 4
+            })
+
+            Items.IconProp = "ImageColor3"
+        else
+            Items.Icon = MakeText({
+                Parent = Items.Row.Instance,
+                Text = Tab.Name,
+                TextSize = 9,
+                Anchor = Vector2.new(0.5, 0.5),
+                Pos = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.new(1, -6, 1, -6),
+                Color = "DimIcon",
+                Align = Enum.TextXAlignment.Center,
+                Truncate = true,
+                Wrap = true,
+                Z = 4
+            })
+
+            Items.IconProp = "TextColor3"
+        end
 
         Items.Hit = MakeButton({
             Parent = Items.Row.Instance,
@@ -3340,9 +3401,11 @@ local Library = { } do
                 Items.BarShadow.Transparency = Active and 0 or 1
             end
 
-            Items.Icon:ChangeItemTheme({ ImageColor3 = Active and "Accent" or "DimIcon" })
+            local Prop = Items.IconProp or "ImageColor3"
+
+            Items.Icon:ChangeItemTheme({ [Prop] = Active and "Accent" or "DimIcon" })
             Items.Icon:Tween({
-                ImageColor3 = Active and Library.Theme.Accent or Library.Theme.DimIcon
+                [Prop] = Active and Library.Theme.Accent or Library.Theme.DimIcon
             })
 
             Items.Row:Tween({ BackgroundTransparency = Active and 0 or 1 })
@@ -3351,10 +3414,10 @@ local Library = { } do
 
         Items.Row:OnHover(function()
             if Tab.Active then return end
-            Items.Icon:Tween({ ImageColor3 = Library.Theme.Text })
+            Items.Icon:Tween({ [Items.IconProp or "ImageColor3"] = Library.Theme.Text })
         end, function()
             if Tab.Active then return end
-            Items.Icon:Tween({ ImageColor3 = Library.Theme.DimIcon })
+            Items.Icon:Tween({ [Items.IconProp or "ImageColor3"] = Library.Theme.DimIcon })
         end)
 
         local function EnterFirstSub()
@@ -3421,7 +3484,7 @@ local Library = { } do
 
         local SubTab = {
             Name = Params.Name or "SubTab",
-            Icon = Params.Icon or "circle",
+            Icon = Params.Icon,
             Tab = Tab,
             Window = Window,
             Sections = { },
@@ -3437,9 +3500,12 @@ local Library = { } do
         local ColW = Window.ColW
         local Col2X = Window.Col2X
 
+        local ResolvedIcon = SubTab.Icon ~= nil and ResolveIcon(SubTab.Icon) or nil
+        local HasIcon = ResolvedIcon ~= nil and ResolvedIcon ~= "rbxassetid://0"
+
         local TextW = math.ceil(MeasureText(SubTab.Name, 15, 300, UiFont).X)
         local CollapsedW = 40
-        local ExpandedW = 37 + TextW + 12
+        local ExpandedW = (HasIcon and 37 or 10) + TextW + 12
 
         SubTab.CollapsedW = CollapsedW
         SubTab.ExpandedW = ExpandedW
@@ -3456,22 +3522,41 @@ local Library = { } do
         SetRest(Items.Pill.Instance, "BackgroundTransparency", 1)
         Items.Pill.Instance.LayoutOrder = #Tab.Subs
 
-        Items.Icon = MakeImage({
-            Parent = Items.Pill.Instance,
-            Icon = SubTab.Icon,
-            Anchor = Vector2.new(0, 0.5),
-            Pos = UDim2.new(0, 11, 0.5, 0),
-            Size = UDim2.fromOffset(18, 18),
-            Color = "DimIcon",
-            Z = 23
-        })
+        if HasIcon then
+            Items.Icon = MakeImage({
+                Parent = Items.Pill.Instance,
+                Icon = SubTab.Icon,
+                Anchor = Vector2.new(0, 0.5),
+                Pos = UDim2.new(0, 11, 0.5, 0),
+                Size = UDim2.fromOffset(18, 18),
+                Color = "DimIcon",
+                Z = 23
+            })
+
+            Items.IconProp = "ImageColor3"
+        else
+            Items.Icon = MakeText({
+                Parent = Items.Pill.Instance,
+                Text = string.upper(string.sub(SubTab.Name, 1, 2)),
+                TextSize = 10,
+                Anchor = Vector2.new(0, 0.5),
+                Pos = UDim2.new(0, 0, 0.5, 0),
+                Size = UDim2.fromOffset(40, 20),
+                Color = "DimIcon",
+                Align = Enum.TextXAlignment.Center,
+                Truncate = true,
+                Z = 23
+            })
+
+            Items.IconProp = "TextColor3"
+        end
 
         Items.Label = MakeText({
             Parent = Items.Pill.Instance,
             Text = SubTab.Name,
             TextSize = 15,
             Anchor = Vector2.new(0, 0.5),
-            Pos = UDim2.new(0, 37, 0.5, 0),
+            Pos = UDim2.new(0, HasIcon and 37 or 10, 0.5, 0),
             Size = UDim2.fromOffset(TextW + 8, 20),
             Color = "Text",
             Z = 23
@@ -3483,7 +3568,7 @@ local Library = { } do
             local Bounds = math.ceil(Items.Label.Instance.TextBounds.X)
             if Bounds <= 0 then return end
 
-            ExpandedW = 37 + Bounds + 12
+            ExpandedW = (HasIcon and 37 or 10) + Bounds + 12
             SubTab.ExpandedW = ExpandedW
             Items.Label.Instance.Size = UDim2.fromOffset(Bounds + 8, 20)
 
@@ -3562,20 +3647,27 @@ local Library = { } do
             Library:Tween({ Size = UDim2.fromOffset(Width, 30) }, Info, Items.Pill.Instance)
             Library:Tween({ TextTransparency = Active and 0 or 1 }, Info, Items.Label.Instance)
 
-            Items.Icon:ChangeItemTheme({ ImageColor3 = Active and "Accent" or "DimIcon" })
+            local Prop = Items.IconProp or "ImageColor3"
+
+            Items.Icon:ChangeItemTheme({ [Prop] = Active and "Accent" or "DimIcon" })
             Items.Icon:Tween({
-                ImageColor3 = Active and Library.Theme.Accent or Library.Theme.DimIcon
+                [Prop] = Active and Library.Theme.Accent or Library.Theme.DimIcon
             }, Info)
+
+            if not HasIcon then
+                Library:StampResting(Items.Icon.Instance, "TextTransparency", Active and 1 or 0)
+                Library:Tween({ TextTransparency = Active and 1 or 0 }, Info, Items.Icon.Instance)
+            end
 
             Items.Pill:Tween({ BackgroundTransparency = Active and 0 or 1 }, Info)
         end
 
         Items.Pill:OnHover(function()
             if Tab.Current == SubTab then return end
-            Items.Icon:Tween({ ImageColor3 = Library.Theme.Text })
+            Items.Icon:Tween({ [Items.IconProp or "ImageColor3"] = Library.Theme.Text })
         end, function()
             if Tab.Current == SubTab then return end
-            Items.Icon:Tween({ ImageColor3 = Library.Theme.DimIcon })
+            Items.Icon:Tween({ [Items.IconProp or "ImageColor3"] = Library.Theme.DimIcon })
         end)
 
         local RowIn = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
@@ -6890,7 +6982,7 @@ local Library = { } do
         end
     end)
 
-    getgenv().Zolar = Library
+    getgenv().Aevyx = Library
 
     task.defer(function()
         local Name = Library:GetAutoload()
